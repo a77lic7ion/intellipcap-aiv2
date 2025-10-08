@@ -41,6 +41,8 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedInterface, setSelectedInterface] = useState('')
   const [bpfFilter, setBpfFilter] = useState('')
+  const [portProtocol, setPortProtocol] = useState('any') // any | tcp | udp
+  const [portSelection, setPortSelection] = useState('all') // common port number or 'all'
   const [captureDuration, setCaptureDuration] = useState('30s')
   const [analysisReport, setAnalysisReport] = useState(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -572,6 +574,35 @@ function App() {
                       </Select>
                     </div>
                     
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="port-protocol">Port Protocol</Label>
+                        <Select value={portProtocol} onValueChange={handlePortProtocolChange}>
+                          <SelectTrigger className="bg-gray-700 border-gray-600">
+                            <SelectValue placeholder="Any/TCP/UDP" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-gray-700 border-gray-600">
+                            <SelectItem value="any">Any</SelectItem>
+                            <SelectItem value="tcp">TCP</SelectItem>
+                            <SelectItem value="udp">UDP</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="common-port">Common Port</Label>
+                        <Select value={portSelection} onValueChange={handlePortSelectionChange}>
+                          <SelectTrigger className="bg-gray-700 border-gray-600">
+                            <SelectValue placeholder="Select common port" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-gray-700 border-gray-600">
+                            {COMMON_PORTS.map((p) => (
+                              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
                     <div>
                       <Label htmlFor="bpf-filter">BPF Filter (Optional)</Label>
                       <Input
@@ -581,6 +612,7 @@ function App() {
                         onChange={(e) => setBpfFilter(e.target.value)}
                         className="bg-gray-700 border-gray-600"
                       />
+                      <p className="text-xs text-gray-400 mt-1">Use the dropdowns above to quickly set port filters. Choose "All ports" to include everything Wireshark scans.</p>
                     </div>
 
                     {isCapturing && (
@@ -1042,3 +1074,54 @@ function App() {
 }
 
 export default App
+  // Common ports list for quick selection
+  const COMMON_PORTS = [
+    { value: 'all', label: 'All ports' },
+    { value: '20', label: '20 (FTP data)' },
+    { value: '21', label: '21 (FTP control)' },
+    { value: '22', label: '22 (SSH)' },
+    { value: '23', label: '23 (Telnet)' },
+    { value: '25', label: '25 (SMTP)' },
+    { value: '53', label: '53 (DNS)' },
+    { value: '67', label: '67 (DHCP server)' },
+    { value: '68', label: '68 (DHCP client)' },
+    { value: '80', label: '80 (HTTP)' },
+    { value: '110', label: '110 (POP3)' },
+    { value: '123', label: '123 (NTP)' },
+    { value: '143', label: '143 (IMAP)' },
+    { value: '161', label: '161 (SNMP)' },
+    { value: '443', label: '443 (HTTPS)' },
+    { value: '465', label: '465 (SMTPS)' },
+    { value: '587', label: '587 (Mail submission)' },
+    { value: '993', label: '993 (IMAPS)' },
+    { value: '995', label: '995 (POP3S)' },
+    { value: '3306', label: '3306 (MySQL)' },
+    { value: '5432', label: '5432 (PostgreSQL)' },
+    { value: '6379', label: '6379 (Redis)' },
+    { value: '8080', label: '8080 (HTTP-alt)' },
+  ]
+
+  const buildPortBpf = (protocol, port) => {
+    if (port === 'all') {
+      if (protocol === 'tcp') return 'tcp'
+      if (protocol === 'udp') return 'udp'
+      // any + all ports: capture all traffic (Wireshark default)
+      return ''
+    }
+    if (protocol === 'tcp') return `tcp port ${port}`
+    if (protocol === 'udp') return `udp port ${port}`
+    // any protocol: include both TCP/UDP on that port
+    return `(tcp port ${port} or udp port ${port})`
+  }
+
+  const handlePortProtocolChange = (value) => {
+    setPortProtocol(value)
+    const next = buildPortBpf(value, portSelection)
+    setBpfFilter(next)
+  }
+
+  const handlePortSelectionChange = (value) => {
+    setPortSelection(value)
+    const next = buildPortBpf(portProtocol, value)
+    setBpfFilter(next)
+  }
