@@ -193,7 +193,8 @@ function App() {
 
   const exportData = (format) => {
 
-    if (!filteredPackets || filteredPackets.length === 0) return
+    // We allow PDF export even if no packets, as it can include AI report
+    if (format !== 'pdf' && (!filteredPackets || filteredPackets.length === 0)) return
 
     const rows = filteredPackets.map(p => ({
       id: p.id,
@@ -222,22 +223,91 @@ function App() {
       const csv = [headers.join(','), ...rows.map(r => headers.map(h => {
         const v = r[h]
         const s = v == null ? '' : String(v)
-        // Escape quotes and wrap if needed
         const needsQuote = s.includes(',') || s.includes('"') || s.includes('\n')
         const escaped = s.replace(/"/g, '""')
         return needsQuote ? `"${escaped}"` : escaped
       }).join(','))].join('\n')
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
       download(blob, 'packets.csv')
+
+      // If AI analysis is available, also export a summary CSV
+      if (analysisReport) {
+        const aiRows = []
+        // Overview
+        Object.entries(analysisReport.overview || {}).forEach(([k, v]) => {
+          aiRows.push({ section: 'Overview', key: k, value: String(v) })
+        })
+        // Protocols
+        (analysisReport.protocolDistribution || []).forEach(p => {
+          aiRows.push({ section: 'ProtocolDistribution', key: p.name, value: `${p.count} (${p.pct}%)` })
+        })
+        // Risks
+        (analysisReport.risks || []).forEach(r => {
+          aiRows.push({ section: 'Risks', key: r.category, value: r.severity })
+        })
+        // Findings
+        (analysisReport.findings || []).forEach(f => {
+          aiRows.push({ section: 'Findings', key: f.category, value: f.detail })
+        })
+        // Performance
+        Object.entries(analysisReport.performance || {}).forEach(([k, v]) => {
+          aiRows.push({ section: 'Performance', key: k, value: String(v) })
+        })
+        // Anomalies
+        (analysisReport.anomalies?.observations || []).forEach(obs => {
+          aiRows.push({ section: 'Anomalies', key: 'observation', value: obs })
+        })
+        // Recommendations
+        (analysisReport.recommendations || []).forEach(rec => {
+          aiRows.push({ section: 'Recommendations', key: 'recommendation', value: rec })
+        })
+
+        const aiHeaders = ['section','key','value']
+        const aiCsv = [aiHeaders.join(','), ...aiRows.map(r => aiHeaders.map(h => {
+          const s = String(r[h] ?? '')
+          const needsQuote = s.includes(',') || s.includes('"') || s.includes('\n')
+          const escaped = s.replace(/"/g, '""')
+          return needsQuote ? `"${escaped}"` : escaped
+        }).join(','))].join('\n')
+        const aiBlob = new Blob([aiCsv], { type: 'text/csv;charset=utf-8;' })
+        download(aiBlob, 'ai-report.csv')
+      }
     } else if (format === 'pdf') {
-      // Open printable report in new window (user can Save as PDF)
-      const headers = Object.keys(rows[0])
-      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Packet Report</title>`+
-        `<style>body{font-family:Arial, sans-serif; padding:20px;} table{border-collapse:collapse; width:100%;} th,td{border:1px solid #333; padding:6px; font-size:12px;} h1{font-size:18px;}</style>`+
-        `</head><body><h1>Packet Report</h1>`+
-        `<table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>`+
-        `<tbody>${rows.map(r => `<tr>${headers.map(h => `<td>${r[h]}</td>`).join('')}</tr>`).join('')}</tbody>`+
-        `</table></body></html>`
+      // Printable HTML including Packet table and AI Analysis (if available)
+      const headers = rows.length ? Object.keys(rows[0]) : ['id','timestamp','source','destination','protocol','length','info','port']
+      const ai = analysisReport
+      const style = `body{font-family:Arial, sans-serif; padding:20px; color:#0b0b0b;} h1{font-size:20px; margin-bottom:8px;} h2{font-size:16px; margin-top:18px;} table{border-collapse:collapse; width:100%; margin-top:8px;} th,td{border:1px solid #333; padding:6px; font-size:12px;} ul{margin:6px 0 0 18px; font-size:12px}`
+      const aiSection = ai ? `
+        <h1>AI-Powered Analysis</h1>
+        <h2>Overview</h2>
+        <table><tbody>
+          ${Object.entries(ai.overview || {}).map(([k,v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}
+        </tbody></table>
+        <h2>Protocol Distribution</h2>
+        <table><thead><tr><th>Protocol</th><th>Count</th><th>Percent</th></tr></thead><tbody>
+          ${(ai.protocolDistribution || []).map(p => `<tr><td>${p.name}</td><td>${p.count}</td><td>${p.pct}%</td></tr>`).join('')}
+        </tbody></table>
+        <h2>Risks</h2>
+        ${ai.risks && ai.risks.length ? `<table><thead><tr><th>Category</th><th>Severity</th><th>Detail</th></tr></thead><tbody>${ai.risks.map(r => `<tr><td>${r.category}</td><td>${r.severity || ''}</td><td>${r.description || ''}</td></tr>`).join('')}</tbody></table>` : '<p>No significant risks detected.</p>'}
+        <h2>Findings</h2>
+        ${ai.findings && ai.findings.length ? `<table><thead><tr><th>Category</th><th>Detail</th></tr></thead><tbody>${ai.findings.map(f => `<tr><td>${f.category}</td><td>${f.detail}</td></tr>`).join('')}</tbody></table>` : '<p>No notable findings.</p>'}
+        <h2>Performance</h2>
+        <table><tbody>
+          ${Object.entries(ai.performance || {}).map(([k,v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}
+        </tbody></table>
+        <h2>Anomalies</h2>
+        ${(ai.anomalies?.observations || []).length ? `<ul>${ai.anomalies.observations.map(a => `<li>${a}</li>`).join('')}</ul>` : '<p>No anomalies observed.</p>'}
+        <h2>Recommendations</h2>
+        ${(ai.recommendations || []).length ? `<ul>${ai.recommendations.map(r => `<li>${r}</li>`).join('')}</ul>` : '<p>No recommendations.</p>'}
+      ` : '<p>No AI analysis available.</p>'
+
+      const packetTable = rows.length ? `
+        <h1>Packet Report</h1>
+        <table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(r => `<tr>${headers.map(h => `<td>${r[h]}</td>`).join('')}</tr>`).join('')}</tbody></table>
+      ` : '<p>No packets available.</p>'
+
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>IntelliPCAP.AI Report</title><style>${style}</style></head><body>${aiSection}${packetTable}</body></html>`
       const w = window.open('', '_blank')
       if (w) {
         w.document.open()
@@ -894,14 +964,14 @@ function App() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-gray-400">
-                  Export your packet analysis data to CSV or generate a PDF report.
+                  Export packets to CSV and generate a PDF report that includes the AI-Powered Analysis.
                 </p>
                 
                 <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
                   <Button 
                     variant="outline" 
                     onClick={() => exportData('csv')}
-                    disabled={filteredPackets.length === 0}
+                    disabled={filteredPackets.length === 0 && !analysisReport}
                     className="h-20 flex-col"
                   >
                     <FileText className="w-6 h-6 mb-2" />
@@ -913,13 +983,19 @@ function App() {
                   <Button 
                     variant="outline" 
                     onClick={() => exportData('pdf')}
-                    disabled={filteredPackets.length === 0}
+                    disabled={filteredPackets.length === 0 && !analysisReport}
                     className="h-20 flex-col"
                   >
                     <FileText className="w-6 h-6 mb-2" />
                     PDF Report
                   </Button>
                 </div>
+
+                {analysisReport && (
+                  <p className="text-xs text-gray-400">
+                    CSV export downloads packets.csv and ai-report.csv.
+                  </p>
+                )}
 
                 <div className="bg-gray-700 rounded-lg p-4">
                   <h4 className="font-semibold mb-2">Export Summary</h4>
