@@ -24,7 +24,8 @@ import {
   FileText,
   Zap,
   Eye,
-  TrendingUp
+  TrendingUp,
+  RotateCcw
 } from 'lucide-react'
 import { PacketDetails } from './components/PacketDetails.jsx'
 import { TrafficVisualization } from './components/TrafficVisualization.jsx'
@@ -46,12 +47,15 @@ function App() {
   const [captureDuration, setCaptureDuration] = useState('30s')
   const [analysisReport, setAnalysisReport] = useState(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisAccordionOpen, setAnalysisAccordionOpen] = useState([])
   const [captureProgress, setCaptureProgress] = useState(0)
   const [selectedPacket, setSelectedPacket] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
   const fileInputRef = useRef(null)
   const captureIntervalRef = useRef(null)
   const captureStartRef = useRef(null)
+  const trafficBurstRef = useRef(null) // { type: 'dns'|'tls'|'http'|'ssh'|'icmp', remaining: number }
+  const packetIdRef = useRef(6)
   
   const severityBadgeClass = (sev) => {
     if (!sev) return ''
@@ -116,6 +120,103 @@ function App() {
     }
   ]
 
+  // Bursty, weighted generator for realistic traffic
+  const makePacketForType = (id, type) => {
+    const now = new Date()
+    const ts = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}.${String(now.getMilliseconds()).padStart(3, '0')}`
+    if (type === 'dns') {
+      const qnames = ['example.com', 'cdn.vendor.net', 'api.service.io', 'internal.lan']
+      const dsts = ['8.8.8.8', '1.1.1.1', '9.9.9.9']
+      return {
+        id, timestamp: ts, source: '192.168.1.101', destination: dsts[Math.floor(Math.random()*dsts.length)],
+        protocol: 'UDP', length: 64, info: `DNS Query for ${qnames[Math.floor(Math.random()*qnames.length)]}`, port: 53
+      }
+    }
+    if (type === 'tls') {
+      const hosts = ['443.ssl.fastly.com', 'www.cloudflare.com', 'login.example.com']
+      return {
+        id, timestamp: ts, source: '192.168.1.100', destination: hosts[Math.floor(Math.random()*hosts.length)],
+        protocol: 'TLS', length: 900 + Math.floor(Math.random()*700), info: 'Application Data', port: 443
+      }
+    }
+    if (type === 'http') {
+      const paths = ['/status', '/index.html', '/api/data', '/metrics']
+      return {
+        id, timestamp: ts, source: '192.168.1.100', destination: '8.8.8.8',
+        protocol: 'TCP', length: 60 + Math.floor(Math.random()*200), info: `HTTP GET ${paths[Math.floor(Math.random()*paths.length)]}`, port: 80
+      }
+    }
+    if (type === 'ssh') {
+      return {
+        id, timestamp: ts, source: '192.168.1.50', destination: '192.168.1.100',
+        protocol: 'SSH', length: 96, info: 'SSH Protocol', port: 22
+      }
+    }
+    // icmp
+    return {
+      id, timestamp: ts, source: '10.0.0.5', destination: '192.168.1.100',
+      protocol: 'ICMP', length: 98, info: 'Echo Request', port: null
+    }
+  }
+
+  const chooseBurstType = () => {
+    // Base weights
+    let weights = [
+      { type: 'dns', w: 0.25 },
+      { type: 'tls', w: 0.35 },
+      { type: 'http', w: 0.30 },
+      { type: 'ssh', w: 0.05 },
+      { type: 'icmp', w: 0.05 },
+    ]
+    // Adjust by protocol selection
+    if (portProtocol === 'tcp') {
+      weights = weights.map(x => ({ ...x, w: (x.type === 'dns' || x.type === 'icmp') ? 0.01 : x.w }))
+    } else if (portProtocol === 'udp') {
+      weights = weights.map(x => ({ ...x, w: (x.type === 'dns') ? Math.max(x.w, 0.6) : (x.type === 'http' || x.type === 'tls' || x.type === 'ssh') ? 0.02 : x.w }))
+    }
+    // Adjust by specific port selection
+    if (portSelection !== 'all') {
+      const p = parseInt(portSelection, 10)
+      weights = weights.map(x => {
+        if (p === 53) return { ...x, w: x.type === 'dns' ? Math.max(x.w, 0.8) : 0.01 }
+        if (p === 443) return { ...x, w: x.type === 'tls' ? Math.max(x.w, 0.8) : 0.01 }
+        if (p === 80) return { ...x, w: x.type === 'http' ? Math.max(x.w, 0.8) : 0.01 }
+        if (p === 22) return { ...x, w: x.type === 'ssh' ? Math.max(x.w, 0.8) : 0.01 }
+        return x
+      })
+    }
+    // Random pick by cumulative weights
+    const total = weights.reduce((s, x) => s + x.w, 0)
+    let r = Math.random() * total
+    for (const x of weights) {
+      if ((r -= x.w) <= 0) return x.type
+    }
+    return 'http'
+  }
+
+  const packetPassesFilter = (p) => {
+    // Apply dropdown selections
+    if (portProtocol !== 'any') {
+      const proto = portProtocol.toLowerCase()
+      const pproto = p.protocol.toLowerCase()
+      if (!((proto === 'tcp' && pproto === 'tcp') || (proto === 'udp' && pproto === 'udp'))) return false
+    }
+    if (portSelection !== 'all') {
+      const portNum = parseInt(portSelection, 10)
+      if (p.port !== portNum) return false
+    }
+    // Best-effort parse of bpfFilter
+    if (bpfFilter && bpfFilter.trim()) {
+      const f = bpfFilter.toLowerCase()
+      if (f.includes('tcp') && p.protocol.toLowerCase() !== 'tcp') return false
+      if (f.includes('udp') && p.protocol.toLowerCase() !== 'udp') return false
+      if (f.includes('icmp') && p.protocol.toLowerCase() !== 'icmp') return false
+      const m = f.match(/port\s+(\d{1,5})/)
+      if (m && p.port !== parseInt(m[1], 10)) return false
+    }
+    return true
+  }
+
   const networkInterfaces = [
     'eth0 - Ethernet',
     'wlan0 - Wireless',
@@ -161,24 +262,54 @@ function App() {
       captureIntervalRef.current = null
     }
 
-    // Simulate live capture based on duration
+    // Reset burst state and ID counter
+    trafficBurstRef.current = null
+    packetIdRef.current = 6
+
+    // Simulate live capture streaming packets over time
     captureIntervalRef.current = setInterval(() => {
-      if (durationSeconds == null) {
-        // Unlimited capture: keep running without progress bar updates
-        // Optionally add mock packets over time here
-        return
-      }
       const elapsed = (Date.now() - captureStartRef.current) / 1000
-      const pct = Math.min(100, Math.round((elapsed / durationSeconds) * 100))
-      setCaptureProgress(pct)
-      if (elapsed >= durationSeconds) {
+      if (durationSeconds != null) {
+        const pct = Math.min(100, Math.round((elapsed / durationSeconds) * 100))
+        setCaptureProgress(pct)
+      }
+
+      // Decide or continue a burst
+      const burst = trafficBurstRef.current
+      let type = burst?.type
+      let remaining = burst?.remaining ?? 0
+      if (!burst || remaining <= 0) {
+        type = chooseBurstType()
+        // DNS/TLS bursts longer than others
+        const base = type === 'dns' ? 6 : type === 'tls' ? 5 : type === 'http' ? 4 : type === 'ssh' ? 3 : 2
+        remaining = base + Math.floor(Math.random() * 3)
+      }
+      // Produce 1–3 packets this tick (bounded by remaining)
+      const addCount = Math.min(remaining, 1 + Math.floor(Math.random() * 3))
+      trafficBurstRef.current = { type, remaining: remaining - addCount }
+
+      setPackets(prev => {
+        const candidates = Array.from({ length: addCount }, () => {
+          const id = packetIdRef.current++
+          return makePacketForType(id, type)
+        })
+        const passed = candidates.filter(packetPassesFilter)
+        if (passed.length === 0) {
+          // No packet matched; keep previous
+          return prev
+        }
+        const next = [...prev, ...passed]
+        setFilteredPackets(next)
+        return next
+      })
+
+      // Stop when duration reached
+      if (durationSeconds != null && elapsed >= durationSeconds) {
         clearInterval(captureIntervalRef.current)
         captureIntervalRef.current = null
         setIsCapturing(false)
-        setPackets(mockPackets)
-        setFilteredPackets(mockPackets)
       }
-    }, 250)
+    }, 1000)
   }
 
   const handleStopCapture = () => {
@@ -188,9 +319,8 @@ function App() {
       clearInterval(captureIntervalRef.current)
       captureIntervalRef.current = null
     }
-    // Populate with mock packets when stopping (simulation)
-    setPackets(mockPackets)
-    setFilteredPackets(mockPackets)
+    // Keep whatever has been captured so far
+    setFilteredPackets(packets)
   }
 
   const exportData = (format) => {
@@ -339,6 +469,7 @@ function App() {
   const handleAIAnalysis = () => {
     if (!packets.length) return
     setIsAnalyzing(true)
+    setAnalysisAccordionOpen([])
 
     const byProtocol = packets.reduce((acc, p) => {
       acc[p.protocol] = (acc[p.protocol] || 0) + 1
@@ -427,10 +558,50 @@ function App() {
     setTimeout(() => {
       setAnalysisReport(report)
       setIsAnalyzing(false)
+      // Auto-expand all sections when the report is ready
+      setAnalysisAccordionOpen(['overview','protocols','risks','findings','performance','anomalies','recommendations'])
     }, 800)
   }
 
   // (removed old duplicate exportData stub)
+
+  // Clear and start over handler
+  const handleStartOver = () => {
+    // Stop any ongoing capture
+    if (captureIntervalRef.current) {
+      clearInterval(captureIntervalRef.current)
+      captureIntervalRef.current = null
+    }
+    setIsCapturing(false)
+    captureStartRef.current = null
+    setCaptureProgress(0)
+
+    // Reset core states
+    setActiveTab('capture')
+    setSelectedFile(null)
+    setPackets([])
+    setFilteredPackets([])
+    setSearchTerm('')
+    setSelectedInterface('')
+    setBpfFilter('')
+    setPortProtocol('any')
+    setPortSelection('all')
+    setCaptureDuration('30s')
+    setSelectedPacket(null)
+
+    // Reset analysis states
+    setIsAnalyzing(false)
+    setAnalysisReport(null)
+    setAnalysisAccordionOpen([])
+
+    // Close settings if open
+    setShowSettings(false)
+
+    // Clear file input element
+    if (fileInputRef.current) {
+      try { fileInputRef.current.value = '' } catch (e) {}
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -448,14 +619,18 @@ function App() {
               </div>
             </div>
             <div className="flex items-center space-x-2">
-              <Badge variant="outline" className="text-green-400 border-green-400">
-                <Zap className="w-3 h-3 mr-1" />
-                AI Enabled
-              </Badge>
-              <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
-                <SettingsIcon className="w-4 h-4 mr-2" />
-                Settings
-              </Button>
+            <Badge variant="outline" className="text-green-400 border-green-400">
+              <Zap className="w-3 h-3 mr-1" />
+              AI Enabled
+            </Badge>
+            <Button variant="outline" size="sm" onClick={handleStartOver}>
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Start Over
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
+              <SettingsIcon className="w-4 h-4 mr-2" />
+              Settings
+            </Button>
             </div>
           </div>
         </div>
@@ -863,7 +1038,7 @@ function App() {
                 </div>
 
                 {analysisReport && (
-                  <Accordion type="multiple" className="space-y-2">
+                  <Accordion type="multiple" value={analysisAccordionOpen} onValueChange={setAnalysisAccordionOpen} className="space-y-2">
                     <AccordionItem value="overview">
                       <AccordionTrigger>Overview</AccordionTrigger>
                       <AccordionContent>
