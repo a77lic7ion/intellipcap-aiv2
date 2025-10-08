@@ -33,6 +33,46 @@ import { Settings } from './components/Settings.jsx'
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/components/ui/accordion.jsx'
 import './App.css'
 
+// Common ports list for quick selection
+const COMMON_PORTS = [
+  { value: 'all', label: 'All ports' },
+  { value: '20', label: '20 (FTP data)' },
+  { value: '21', label: '21 (FTP control)' },
+  { value: '22', label: '22 (SSH)' },
+  { value: '23', label: '23 (Telnet)' },
+  { value: '25', label: '25 (SMTP)' },
+  { value: '53', label: '53 (DNS)' },
+  { value: '67', label: '67 (DHCP server)' },
+  { value: '68', label: '68 (DHCP client)' },
+  { value: '80', label: '80 (HTTP)' },
+  { value: '110', label: '110 (POP3)' },
+  { value: '123', label: '123 (NTP)' },
+  { value: '143', label: '143 (IMAP)' },
+  { value: '161', label: '161 (SNMP)' },
+  { value: '443', label: '443 (HTTPS)' },
+  { value: '465', label: '465 (SMTPS)' },
+  { value: '587', label: '587 (Mail submission)' },
+  { value: '993', label: '993 (IMAPS)' },
+  { value: '995', label: '995 (POP3S)' },
+  { value: '3306', label: '3306 (MySQL)' },
+  { value: '5432', label: '5432 (PostgreSQL)' },
+  { value: '6379', label: '6379 (Redis)' },
+  { value: '8080', label: '8080 (HTTP-alt)' },
+]
+
+const buildPortBpf = (protocol, port) => {
+  if (port === 'all') {
+    if (protocol === 'tcp') return 'tcp'
+    if (protocol === 'udp') return 'udp'
+    // any + all ports: capture all traffic (Wireshark default)
+    return ''
+  }
+  if (protocol === 'tcp') return `tcp port ${port}`
+  if (protocol === 'udp') return `udp port ${port}`
+  // any protocol: include both TCP/UDP on that port
+  return `(tcp port ${port} or udp port ${port})`
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState('capture')
   const [isCapturing, setIsCapturing] = useState(false)
@@ -215,6 +255,18 @@ function App() {
       if (m && p.port !== parseInt(m[1], 10)) return false
     }
     return true
+  }
+
+  const handlePortProtocolChange = (value) => {
+    setPortProtocol(value)
+    const next = buildPortBpf(value, portSelection)
+    setBpfFilter(next)
+  }
+
+  const handlePortSelectionChange = (value) => {
+    setPortSelection(value)
+    const next = buildPortBpf(portProtocol, value)
+    setBpfFilter(next)
   }
 
   const networkInterfaces = [
@@ -1249,54 +1301,3 @@ function App() {
 }
 
 export default App
-  // Common ports list for quick selection
-  const COMMON_PORTS = [
-    { value: 'all', label: 'All ports' },
-    { value: '20', label: '20 (FTP data)' },
-    { value: '21', label: '21 (FTP control)' },
-    { value: '22', label: '22 (SSH)' },
-    { value: '23', label: '23 (Telnet)' },
-    { value: '25', label: '25 (SMTP)' },
-    { value: '53', label: '53 (DNS)' },
-    { value: '67', label: '67 (DHCP server)' },
-    { value: '68', label: '68 (DHCP client)' },
-    { value: '80', label: '80 (HTTP)' },
-    { value: '110', label: '110 (POP3)' },
-    { value: '123', label: '123 (NTP)' },
-    { value: '143', label: '143 (IMAP)' },
-    { value: '161', label: '161 (SNMP)' },
-    { value: '443', label: '443 (HTTPS)' },
-    { value: '465', label: '465 (SMTPS)' },
-    { value: '587', label: '587 (Mail submission)' },
-    { value: '993', label: '993 (IMAPS)' },
-    { value: '995', label: '995 (POP3S)' },
-    { value: '3306', label: '3306 (MySQL)' },
-    { value: '5432', label: '5432 (PostgreSQL)' },
-    { value: '6379', label: '6379 (Redis)' },
-    { value: '8080', label: '8080 (HTTP-alt)' },
-  ]
-
-  const buildPortBpf = (protocol, port) => {
-    if (port === 'all') {
-      if (protocol === 'tcp') return 'tcp'
-      if (protocol === 'udp') return 'udp'
-      // any + all ports: capture all traffic (Wireshark default)
-      return ''
-    }
-    if (protocol === 'tcp') return `tcp port ${port}`
-    if (protocol === 'udp') return `udp port ${port}`
-    // any protocol: include both TCP/UDP on that port
-    return `(tcp port ${port} or udp port ${port})`
-  }
-
-  const handlePortProtocolChange = (value) => {
-    setPortProtocol(value)
-    const next = buildPortBpf(value, portSelection)
-    setBpfFilter(next)
-  }
-
-  const handlePortSelectionChange = (value) => {
-    setPortSelection(value)
-    const next = buildPortBpf(portProtocol, value)
-    setBpfFilter(next)
-  }
