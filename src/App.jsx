@@ -129,7 +129,7 @@ function App() {
       setSelectedFile(file)
       const formData = new FormData()
       formData.append('pcap', file)
-      await fetch('http://localhost:3001/upload', {
+      await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       })
@@ -138,7 +138,7 @@ function App() {
   }
 
   const fetchPackets = async () => {
-    const response = await fetch('http://localhost:3001/packets')
+    const response = await fetch('/api/packets')
     const data = await response.json()
     const formattedPackets = data.map((p, i) => ({
       id: i + 1,
@@ -464,7 +464,7 @@ function App() {
       try { fileInputRef.current.value = '' } catch (e) {}
     }
 
-    await fetch('http://localhost:3001/clear', { method: 'POST' })
+    await fetch('/api/clear', { method: 'POST' })
   }
 
   return (

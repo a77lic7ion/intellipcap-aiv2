@@ -46,11 +46,11 @@ const normalizePacket = (packet) => {
   };
 };
 
-app.get('/', (req, res) => {
+app.get('/api', (req, res) => {
   res.send('Backend is running');
 });
 
-app.post('/upload', upload.single('pcap'), (req, res) => {
+app.post('/api/upload', upload.single('pcap'), (req, res) => {
   const packets = readPackets();
   const parser = pcapParser.parse(req.file.path);
   parser.on('packet', (packet) => {
@@ -66,7 +66,7 @@ app.post('/upload', upload.single('pcap'), (req, res) => {
   });
 });
 
-app.post('/live-data', (req, res) => {
+app.post('/api/live-data', (req, res) => {
   const packets = readPackets();
   const normalized = normalizePacket(req.body.packet);
   if (normalized) {
@@ -76,12 +76,12 @@ app.post('/live-data', (req, res) => {
   res.send('Live data received');
 });
 
-app.get('/packets', (req, res) => {
+app.get('/api/packets', (req, res) => {
   const packets = readPackets();
   res.json(packets);
 });
 
-app.post('/clear', (req, res) => {
+app.post('/api/clear', (req, res) => {
   writePackets([]);
   res.send('Packets cleared');
 });

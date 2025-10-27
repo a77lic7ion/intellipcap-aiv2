@@ -15,7 +15,7 @@ if (!activeInterface) {
 }
 
 const pcap_session = pcap.createSession(activeInterface, { filter: '' });
-const backendUrl = 'http://localhost:3001/live-data';
+const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001/api/live-data';
 
 pcap_session.on('packet', (raw_packet) => {
   const packet = pcap.decode.packet(raw_packet);

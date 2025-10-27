@@ -204,3 +204,17 @@ This project is developed as part of the IntelliPCAP.AI v2 network analysis suit
 - **React Community**: Excellent framework and ecosystem
 - **Tailwind CSS**: Beautiful and responsive design system
 - **Recharts**: Powerful charting library for data visualization
+
+## Deployment on Vercel
+
+This application is designed to be deployed on Vercel. The `vercel.json` file in the root directory is configured to handle the frontend and backend deployment.
+
+### Storage Limitation
+
+The backend uses a simple `packets.json` file for storing packet data. While this is suitable for local development, it has limitations when deployed to Vercel's serverless environment. The file system in Vercel is ephemeral, meaning the `packets.json` file will be reset on each deployment and may not persist between serverless function invocations.
+
+For a more robust and persistent storage solution on Vercel, consider using one of the following:
+
+- **Vercel KV**: A serverless Redis database that is easy to integrate with Vercel projects.
+- **Vercel Postgres**: A serverless PostgreSQL database for more complex data storage needs.
+- **Other cloud databases**: Services like MongoDB Atlas or Amazon S3 can also be used for persistent storage.
