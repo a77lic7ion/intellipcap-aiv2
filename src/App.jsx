@@ -8,16 +8,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge.jsx'
 import { Progress } from '@/components/ui/progress.jsx'
 import { Textarea } from '@/components/ui/textarea.jsx'
-import { 
-  FileUp, 
-  Play, 
-  Square, 
-  Search, 
-  Download, 
-  Brain, 
-  Shield, 
-  Activity, 
-  Network, 
+import {
+  FileUp,
+  Play,
+  Square,
+  Search,
+  Download,
+  Brain,
+  Shield,
+  Activity,
+  Network,
   Filter,
   Settings as SettingsIcon,
   BarChart3,
@@ -94,9 +94,7 @@ function App() {
   const fileInputRef = useRef(null)
   const captureIntervalRef = useRef(null)
   const captureStartRef = useRef(null)
-  const trafficBurstRef = useRef(null) // { type: 'dns'|'tls'|'http'|'ssh'|'icmp', remaining: number }
-  const packetIdRef = useRef(6)
-  
+
   const severityBadgeClass = (sev) => {
     if (!sev) return ''
     const s = String(sev).toLowerCase()
@@ -104,157 +102,6 @@ function App() {
     if (s.includes('medium')) return 'bg-yellow-500 text-black border-yellow-500'
     if (s.includes('low')) return 'bg-green-600 text-white border-green-600'
     return 'bg-gray-600 text-white border-gray-600'
-  }
-
-  // Mock data for demonstration
-  const mockPackets = [
-    {
-      id: 1,
-      timestamp: '2025-10-08 10:15:23.456',
-      source: '192.168.1.100',
-      destination: '8.8.8.8',
-      protocol: 'TCP',
-      length: 74,
-      info: 'HTTP GET /api/data',
-      port: 80
-    },
-    {
-      id: 2,
-      timestamp: '2025-10-08 10:15:23.789',
-      source: '192.168.1.100',
-      destination: '192.168.1.1',
-      protocol: 'UDP',
-      length: 64,
-      info: 'DNS Query for example.com',
-      port: 53
-    },
-    {
-      id: 3,
-      timestamp: '2025-10-08 10:15:24.123',
-      source: '10.0.0.5',
-      destination: '192.168.1.100',
-      protocol: 'ICMP',
-      length: 98,
-      info: 'Echo Request',
-      port: null
-    },
-    {
-      id: 4,
-      timestamp: '2025-10-08 10:15:24.456',
-      source: '192.168.1.100',
-      destination: '443.ssl.fastly.com',
-      protocol: 'TLS',
-      length: 1420,
-      info: 'Application Data',
-      port: 443
-    },
-    {
-      id: 5,
-      timestamp: '2025-10-08 10:15:24.789',
-      source: '192.168.1.50',
-      destination: '192.168.1.100',
-      protocol: 'SSH',
-      length: 96,
-      info: 'SSH Protocol',
-      port: 22
-    }
-  ]
-
-  // Bursty, weighted generator for realistic traffic
-  const makePacketForType = (id, type) => {
-    const now = new Date()
-    const ts = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}.${String(now.getMilliseconds()).padStart(3, '0')}`
-    if (type === 'dns') {
-      const qnames = ['example.com', 'cdn.vendor.net', 'api.service.io', 'internal.lan']
-      const dsts = ['8.8.8.8', '1.1.1.1', '9.9.9.9']
-      return {
-        id, timestamp: ts, source: '192.168.1.101', destination: dsts[Math.floor(Math.random()*dsts.length)],
-        protocol: 'UDP', length: 64, info: `DNS Query for ${qnames[Math.floor(Math.random()*qnames.length)]}`, port: 53
-      }
-    }
-    if (type === 'tls') {
-      const hosts = ['443.ssl.fastly.com', 'www.cloudflare.com', 'login.example.com']
-      return {
-        id, timestamp: ts, source: '192.168.1.100', destination: hosts[Math.floor(Math.random()*hosts.length)],
-        protocol: 'TLS', length: 900 + Math.floor(Math.random()*700), info: 'Application Data', port: 443
-      }
-    }
-    if (type === 'http') {
-      const paths = ['/status', '/index.html', '/api/data', '/metrics']
-      return {
-        id, timestamp: ts, source: '192.168.1.100', destination: '8.8.8.8',
-        protocol: 'TCP', length: 60 + Math.floor(Math.random()*200), info: `HTTP GET ${paths[Math.floor(Math.random()*paths.length)]}`, port: 80
-      }
-    }
-    if (type === 'ssh') {
-      return {
-        id, timestamp: ts, source: '192.168.1.50', destination: '192.168.1.100',
-        protocol: 'SSH', length: 96, info: 'SSH Protocol', port: 22
-      }
-    }
-    // icmp
-    return {
-      id, timestamp: ts, source: '10.0.0.5', destination: '192.168.1.100',
-      protocol: 'ICMP', length: 98, info: 'Echo Request', port: null
-    }
-  }
-
-  const chooseBurstType = () => {
-    // Base weights
-    let weights = [
-      { type: 'dns', w: 0.25 },
-      { type: 'tls', w: 0.35 },
-      { type: 'http', w: 0.30 },
-      { type: 'ssh', w: 0.05 },
-      { type: 'icmp', w: 0.05 },
-    ]
-    // Adjust by protocol selection
-    if (portProtocol === 'tcp') {
-      weights = weights.map(x => ({ ...x, w: (x.type === 'dns' || x.type === 'icmp') ? 0.01 : x.w }))
-    } else if (portProtocol === 'udp') {
-      weights = weights.map(x => ({ ...x, w: (x.type === 'dns') ? Math.max(x.w, 0.6) : (x.type === 'http' || x.type === 'tls' || x.type === 'ssh') ? 0.02 : x.w }))
-    }
-    // Adjust by specific port selection
-    if (portSelection !== 'all') {
-      const p = parseInt(portSelection, 10)
-      weights = weights.map(x => {
-        if (p === 53) return { ...x, w: x.type === 'dns' ? Math.max(x.w, 0.8) : 0.01 }
-        if (p === 443) return { ...x, w: x.type === 'tls' ? Math.max(x.w, 0.8) : 0.01 }
-        if (p === 80) return { ...x, w: x.type === 'http' ? Math.max(x.w, 0.8) : 0.01 }
-        if (p === 22) return { ...x, w: x.type === 'ssh' ? Math.max(x.w, 0.8) : 0.01 }
-        return x
-      })
-    }
-    // Random pick by cumulative weights
-    const total = weights.reduce((s, x) => s + x.w, 0)
-    let r = Math.random() * total
-    for (const x of weights) {
-      if ((r -= x.w) <= 0) return x.type
-    }
-    return 'http'
-  }
-
-  const packetPassesFilter = (p) => {
-    // Apply dropdown selections
-    if (portProtocol !== 'any') {
-      const proto = portProtocol.toLowerCase()
-      const pproto = p.protocol.toLowerCase()
-      if (!((proto === 'tcp' && pproto === 'tcp') || (proto === 'udp' && pproto === 'udp'))) return false
-    }
-    if (portSelection !== 'all') {
-      const portNum = parseInt(portSelection, 10)
-      if (p.port !== portNum) return false
-    }
-    // Best-effort parse of bpfFilter
-    if (bpfFilter && bpfFilter.trim()) {
-      const f = bpfFilter.toLowerCase()
-      if (f.includes('tcp') && p.protocol.toLowerCase() !== 'tcp') return false
-      if (f.includes('udp') && p.protocol.toLowerCase() !== 'udp') return false
-      if (f.includes('icmp') && p.protocol.toLowerCase() !== 'icmp') return false
-      const m = f.match(/port\s+(\d{1,5})/)
-      if (m && p.port !== parseInt(m[1], 10)) return false
-    }
-    return true
   }
 
   const handlePortProtocolChange = (value) => {
@@ -276,16 +123,35 @@ function App() {
     'docker0 - Docker Bridge'
   ]
 
-  const handleFileUpload = (event) => {
+  const handleFileUpload = async (event) => {
     const file = event.target.files[0]
     if (file && (file.name.endsWith('.pcap') || file.name.endsWith('.pcapng'))) {
       setSelectedFile(file)
-      // Simulate loading packets
-      setTimeout(() => {
-        setPackets(mockPackets)
-        setFilteredPackets(mockPackets)
-      }, 1000)
+      const formData = new FormData()
+      formData.append('pcap', file)
+      await fetch('http://localhost:3001/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      fetchPackets()
     }
+  }
+
+  const fetchPackets = async () => {
+    const response = await fetch('http://localhost:3001/packets')
+    const data = await response.json()
+    const formattedPackets = data.map((p, i) => ({
+      id: i + 1,
+      timestamp: new Date(p.pcap_header.tv_sec * 1000 + p.pcap_header.tv_usec / 1000).toISOString(),
+      source: p.payload.payload.saddr.addr.join('.'),
+      destination: p.payload.payload.daddr.addr.join('.'),
+      protocol: p.payload.payload.protocolName,
+      length: p.pcap_header.len,
+      info: '', // This would require deeper packet inspection
+      port: p.payload.payload.payload?.sport || p.payload.payload.payload?.dport || null,
+    }));
+    setPackets(formattedPackets)
+    setFilteredPackets(formattedPackets)
   }
 
   const handleStartCapture = () => {
@@ -296,7 +162,6 @@ function App() {
     setPackets([])
     setFilteredPackets([])
 
-    // Determine duration in seconds (null for unlimited)
     const durationMap = {
       '10s': 10,
       '30s': 30,
@@ -308,17 +173,11 @@ function App() {
     const durationSeconds = durationMap[captureDuration]
     captureStartRef.current = Date.now()
 
-    // Clear any existing interval
     if (captureIntervalRef.current) {
       clearInterval(captureIntervalRef.current)
       captureIntervalRef.current = null
     }
 
-    // Reset burst state and ID counter
-    trafficBurstRef.current = null
-    packetIdRef.current = 6
-
-    // Simulate live capture streaming packets over time
     captureIntervalRef.current = setInterval(() => {
       const elapsed = (Date.now() - captureStartRef.current) / 1000
       if (durationSeconds != null) {
@@ -326,36 +185,8 @@ function App() {
         setCaptureProgress(pct)
       }
 
-      // Decide or continue a burst
-      const burst = trafficBurstRef.current
-      let type = burst?.type
-      let remaining = burst?.remaining ?? 0
-      if (!burst || remaining <= 0) {
-        type = chooseBurstType()
-        // DNS/TLS bursts longer than others
-        const base = type === 'dns' ? 6 : type === 'tls' ? 5 : type === 'http' ? 4 : type === 'ssh' ? 3 : 2
-        remaining = base + Math.floor(Math.random() * 3)
-      }
-      // Produce 1–3 packets this tick (bounded by remaining)
-      const addCount = Math.min(remaining, 1 + Math.floor(Math.random() * 3))
-      trafficBurstRef.current = { type, remaining: remaining - addCount }
+      fetchPackets()
 
-      setPackets(prev => {
-        const candidates = Array.from({ length: addCount }, () => {
-          const id = packetIdRef.current++
-          return makePacketForType(id, type)
-        })
-        const passed = candidates.filter(packetPassesFilter)
-        if (passed.length === 0) {
-          // No packet matched; keep previous
-          return prev
-        }
-        const next = [...prev, ...passed]
-        setFilteredPackets(next)
-        return next
-      })
-
-      // Stop when duration reached
       if (durationSeconds != null && elapsed >= durationSeconds) {
         clearInterval(captureIntervalRef.current)
         captureIntervalRef.current = null
@@ -371,13 +202,11 @@ function App() {
       clearInterval(captureIntervalRef.current)
       captureIntervalRef.current = null
     }
-    // Keep whatever has been captured so far
     setFilteredPackets(packets)
   }
 
   const exportData = (format) => {
 
-    // We allow PDF export even if no packets, as it can include AI report
     if (format !== 'pdf' && (!filteredPackets || filteredPackets.length === 0)) return
 
     const rows = filteredPackets.map(p => ({
@@ -414,35 +243,27 @@ function App() {
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
       download(blob, 'packets.csv')
 
-      // If AI analysis is available, also export a summary CSV
       if (analysisReport) {
         const aiRows = []
-        // Overview
         Object.entries(analysisReport.overview || {}).forEach(([k, v]) => {
           aiRows.push({ section: 'Overview', key: k, value: String(v) })
         })
-        // Protocols
-        (analysisReport.protocolDistribution || []).forEach(p => {
+        ;(analysisReport.protocolDistribution || []).forEach(p => {
           aiRows.push({ section: 'ProtocolDistribution', key: p.name, value: `${p.count} (${p.pct}%)` })
         })
-        // Risks
-        (analysisReport.risks || []).forEach(r => {
+        ;(analysisReport.risks || []).forEach(r => {
           aiRows.push({ section: 'Risks', key: r.category, value: r.severity })
         })
-        // Findings
-        (analysisReport.findings || []).forEach(f => {
+        ;(analysisReport.findings || []).forEach(f => {
           aiRows.push({ section: 'Findings', key: f.category, value: f.detail })
         })
-        // Performance
         Object.entries(analysisReport.performance || {}).forEach(([k, v]) => {
           aiRows.push({ section: 'Performance', key: k, value: String(v) })
         })
-        // Anomalies
-        (analysisReport.anomalies?.observations || []).forEach(obs => {
+        ;(analysisReport.anomalies?.observations || []).forEach(obs => {
           aiRows.push({ section: 'Anomalies', key: 'observation', value: obs })
         })
-        // Recommendations
-        (analysisReport.recommendations || []).forEach(rec => {
+        ;(analysisReport.recommendations || []).forEach(rec => {
           aiRows.push({ section: 'Recommendations', key: 'recommendation', value: rec })
         })
 
@@ -457,7 +278,6 @@ function App() {
         download(aiBlob, 'ai-report.csv')
       }
     } else if (format === 'pdf') {
-      // Printable HTML including Packet table and AI Analysis (if available)
       const headers = rows.length ? Object.keys(rows[0]) : ['id','timestamp','source','destination','protocol','length','info','port']
       const ai = analysisReport
       const style = `body{font-family:Arial, sans-serif; padding:20px; color:#0b0b0b;} h1{font-size:20px; margin-bottom:8px;} h2{font-size:16px; margin-top:18px;} table{border-collapse:collapse; width:100%; margin-top:8px;} th,td{border:1px solid #333; padding:6px; font-size:12px;} ul{margin:6px 0 0 18px; font-size:12px}`
@@ -508,7 +328,7 @@ function App() {
     if (!term) {
       setFilteredPackets(packets)
     } else {
-      const filtered = packets.filter(packet => 
+      const filtered = packets.filter(packet =>
         packet.source.includes(term) ||
         packet.destination.includes(term) ||
         packet.protocol.toLowerCase().includes(term.toLowerCase()) ||
@@ -533,7 +353,6 @@ function App() {
       packets.reduce((sum, p) => sum + (p.length || 0), 0) / packets.length
     )
 
-    // Simple heuristics for risks/findings
     const risks = []
     const findings = []
 
@@ -610,16 +429,11 @@ function App() {
     setTimeout(() => {
       setAnalysisReport(report)
       setIsAnalyzing(false)
-      // Auto-expand all sections when the report is ready
       setAnalysisAccordionOpen(['overview','protocols','risks','findings','performance','anomalies','recommendations'])
     }, 800)
   }
 
-  // (removed old duplicate exportData stub)
-
-  // Clear and start over handler
-  const handleStartOver = () => {
-    // Stop any ongoing capture
+  const handleStartOver = async () => {
     if (captureIntervalRef.current) {
       clearInterval(captureIntervalRef.current)
       captureIntervalRef.current = null
@@ -628,7 +442,6 @@ function App() {
     captureStartRef.current = null
     setCaptureProgress(0)
 
-    // Reset core states
     setActiveTab('capture')
     setSelectedFile(null)
     setPackets([])
@@ -641,18 +454,17 @@ function App() {
     setCaptureDuration('30s')
     setSelectedPacket(null)
 
-    // Reset analysis states
     setIsAnalyzing(false)
     setAnalysisReport(null)
     setAnalysisAccordionOpen([])
 
-    // Close settings if open
     setShowSettings(false)
 
-    // Clear file input element
     if (fileInputRef.current) {
       try { fileInputRef.current.value = '' } catch (e) {}
     }
+
+    await fetch('http://localhost:3001/clear', { method: 'POST' })
   }
 
   return (
@@ -731,7 +543,7 @@ function App() {
                     <p className="text-gray-400 mb-4">
                       Drop your .pcap or .pcapng file here, or click to browse
                     </p>
-                    <Button 
+                    <Button
                       onClick={() => fileInputRef.current?.click()}
                       variant="outline"
                     >
@@ -783,7 +595,7 @@ function App() {
                         </SelectContent>
                       </Select>
                     </div>
-                    
+
                     <div>
                       <Label htmlFor="duration">Capture Duration</Label>
                       <Select value={captureDuration} onValueChange={setCaptureDuration}>
@@ -800,7 +612,7 @@ function App() {
                         </SelectContent>
                       </Select>
                     </div>
-                    
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <Label htmlFor="port-protocol">Port Protocol</Label>
@@ -862,7 +674,7 @@ function App() {
                     )}
 
                     <div className="flex space-x-2">
-                      <Button 
+                      <Button
                         onClick={handleStartCapture}
                         disabled={!selectedInterface || isCapturing}
                         className="flex-1"
@@ -870,7 +682,7 @@ function App() {
                         <Play className="w-4 h-4 mr-2" />
                         Start Capture
                       </Button>
-                      <Button 
+                      <Button
                         onClick={handleStopCapture}
                         disabled={!isCapturing}
                         variant="destructive"
@@ -924,8 +736,8 @@ function App() {
                       </thead>
                       <tbody>
                         {filteredPackets.map((packet) => (
-                          <tr 
-                            key={packet.id} 
+                          <tr
+                            key={packet.id}
                             className="border-b border-gray-700 hover:bg-gray-700 cursor-pointer transition-colors"
                             onClick={() => setSelectedPacket(packet)}
                           >
@@ -974,7 +786,7 @@ function App() {
                   </div>
                 </CardContent>
               </Card>
-              
+
               <Card className="bg-gray-800 border-gray-700">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -986,7 +798,7 @@ function App() {
                   </div>
                 </CardContent>
               </Card>
-              
+
               <Card className="bg-gray-800 border-gray-700">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -998,7 +810,7 @@ function App() {
                   </div>
                 </CardContent>
               </Card>
-              
+
               <Card className="bg-gray-800 border-gray-700">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -1070,7 +882,7 @@ function App() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="flex items-end">
-                  <Button 
+                  <Button
                     onClick={handleAIAnalysis}
                     disabled={packets.length === 0 || isAnalyzing}
                     className="w-full"
@@ -1225,10 +1037,10 @@ function App() {
                 <p className="text-gray-400">
                   Export packets to CSV and generate a PDF report that includes the AI-Powered Analysis.
                 </p>
-                
+
                 <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     onClick={() => exportData('csv')}
                     disabled={filteredPackets.length === 0 && !analysisReport}
                     className="h-20 flex-col"
@@ -1236,11 +1048,11 @@ function App() {
                     <FileText className="w-6 h-6 mb-2" />
                     CSV
                   </Button>
-                  
-                  
-                  
-                  <Button 
-                    variant="outline" 
+
+
+
+                  <Button
+                    variant="outline"
                     onClick={() => exportData('pdf')}
                     disabled={filteredPackets.length === 0 && !analysisReport}
                     className="h-20 flex-col"
@@ -1285,13 +1097,13 @@ function App() {
 
       {/* Modals and Overlays */}
       <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
-      
+
       {selectedPacket && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40 p-4">
           <div className="w-full max-w-4xl max-h-[90vh] overflow-hidden">
-            <PacketDetails 
-              packet={selectedPacket} 
-              onClose={() => setSelectedPacket(null)} 
+            <PacketDetails
+              packet={selectedPacket}
+              onClose={() => setSelectedPacket(null)}
             />
           </div>
         </div>
